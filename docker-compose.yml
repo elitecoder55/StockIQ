@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  # ── Backend API ──
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - ASPNETCORE_URLS=http://+:5000
+    restart: unless-stopped
+
+  # ── Frontend (Nginx) ──
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:5000
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped

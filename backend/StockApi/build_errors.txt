@@ -1,0 +1,11 @@
+﻿  Determining projects to restore...
+  All projects are up-to-date for restore.
+D:\stock-project\backend\StockApi\Controllers\AuthController.cs(257,26): error CS1061: 'IEmailService' does not contain a definition for 'SendPasswordResetAsync' and no accessible extension method 'SendPasswordResetAsync' accepting a first argument of type 'IEmailService' could be found (are you missing a using directive or an assembly reference?) [D:\stock-project\backend\StockApi\StockApi.csproj]
+
+Build FAILED.
+
+D:\stock-project\backend\StockApi\Controllers\AuthController.cs(257,26): error CS1061: 'IEmailService' does not contain a definition for 'SendPasswordResetAsync' and no accessible extension method 'SendPasswordResetAsync' accepting a first argument of type 'IEmailService' could be found (are you missing a using directive or an assembly reference?) [D:\stock-project\backend\StockApi\StockApi.csproj]
+    0 Warning(s)
+    1 Error(s)
+
+Time Elapsed 00:00:02.18
