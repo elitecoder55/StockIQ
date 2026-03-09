@@ -32,7 +32,6 @@ public class EmailService : IEmailService
     private string GetFromEmail()
     {
         return Environment.GetEnvironmentVariable("RESEND_FROM") 
-            ?? Environment.GetEnvironmentVariable("SMTP_FROM")
             ?? _config["Resend:From"] 
             ?? "onboarding@resend.dev";
     }
