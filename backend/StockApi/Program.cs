@@ -215,6 +215,8 @@ app.MapGet("/health", () => Results.Ok(new
 
 app.MapGet("/debug-smtp", () => Results.Ok(new
 {
+    resend_api_key = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("RESEND_API_KEY")) ? "NOT SET ❌" : "SET ✅",
+    resend_from = Environment.GetEnvironmentVariable("RESEND_FROM") ?? "NOT SET (will use onboarding@resend.dev)",
     smtp_host = Environment.GetEnvironmentVariable("SMTP_HOST") ?? "NOT SET",
     smtp_port = Environment.GetEnvironmentVariable("SMTP_PORT") ?? "NOT SET",
     smtp_user = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SMTP_USER")) ? "NOT SET" : "SET ✅",
