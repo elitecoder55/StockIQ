@@ -16,26 +16,39 @@ DotNetEnv.Env.Load();
 builder.Services.AddSingleton<IEmailService, EmailService>();
 
 // ── Database ──
-var connStr = Environment.GetEnvironmentVariable("DATABASE_URL")
+var rawDbUrl = Environment.GetEnvironmentVariable("DATABASE_URL")
     ?? builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? "Data Source=stockiq.db";
+    ?? "";
+
+var connStr = rawDbUrl;
 
 // Detect database type and configure accordingly
-if (connStr.StartsWith("postgres://") || connStr.StartsWith("postgresql://") || connStr.Contains("Host="))
+if (!string.IsNullOrEmpty(connStr) && (connStr.StartsWith("postgres://") || connStr.StartsWith("postgresql://") || connStr.Contains("Host=")))
 {
     // PostgreSQL
     if (connStr.StartsWith("postgres://") || connStr.StartsWith("postgresql://"))
     {
-        var uri = new Uri(connStr);
-        var userInfo = uri.UserInfo.Split(':');
-        connStr = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
+        try
+        {
+            var uri = new Uri(connStr);
+            var userInfo = uri.UserInfo.Split(':');
+            connStr = $"Host={uri.Host};Port={uri.Port};Database={uri.AbsolutePath.TrimStart('/')};Username={userInfo[0]};Password={userInfo[1]};SSL Mode=Require;Trust Server Certificate=true";
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error parsing DATABASE_URL: {ex.Message}");
+            Console.WriteLine($"DATABASE_URL starts with: {connStr.Substring(0, Math.Min(20, connStr.Length))}...");
+        }
     }
+    Console.WriteLine($"Using PostgreSQL. ConnStr starts with: {connStr.Substring(0, Math.Min(30, connStr.Length))}...");
     builder.Services.AddDbContext<AppDbContext>(options =>
         options.UseNpgsql(connStr));
 }
 else
 {
     // SQLite for local testing
+    if (string.IsNullOrEmpty(connStr)) connStr = "Data Source=stockiq.db";
+    Console.WriteLine($"Using SQLite: {connStr}");
     builder.Services.AddDbContext<AppDbContext>(options =>
         options.UseSqlite(connStr));
 }
