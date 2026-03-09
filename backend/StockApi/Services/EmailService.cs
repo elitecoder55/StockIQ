@@ -1,8 +1,7 @@
 namespace StockApi.Services;
 
-using MailKit.Net.Smtp;
-using MailKit.Security;
-using MimeKit;
+using System.Text;
+using System.Text.Json;
 
 public interface IEmailService
 {
@@ -16,61 +15,72 @@ public class EmailService : IEmailService
 {
     private readonly IConfiguration _config;
     private readonly ILogger<EmailService> _logger;
+    private readonly HttpClient _http;
 
     public EmailService(IConfiguration config, ILogger<EmailService> logger)
     {
         _config = config;
         _logger = logger;
+        _http = new HttpClient();
     }
 
-    private (string Host, int Port, string User, string Pass, string From, string FromName) GetSmtpConfig()
+    private string GetResendApiKey()
     {
-        var host = Environment.GetEnvironmentVariable("SMTP_HOST") ?? _config["Smtp:Host"] ?? "smtp.gmail.com";
-        var port = int.Parse(Environment.GetEnvironmentVariable("SMTP_PORT") ?? _config["Smtp:Port"] ?? "587");
-        var user = Environment.GetEnvironmentVariable("SMTP_USER") ?? _config["Smtp:User"] ?? "";
-        var pass = Environment.GetEnvironmentVariable("SMTP_PASSWORD") ?? _config["Smtp:Password"] ?? "";
-        var from = Environment.GetEnvironmentVariable("SMTP_FROM") ?? _config["Smtp:From"] ?? user;
-        var fromName = Environment.GetEnvironmentVariable("SMTP_FROM_NAME") ?? _config["Smtp:FromName"] ?? "StockIQ";
-        return (host, port, user, pass, from, fromName);
+        return Environment.GetEnvironmentVariable("RESEND_API_KEY") ?? _config["Resend:ApiKey"] ?? "";
     }
 
-    private async Task SendWithMailKit(string toEmail, string subject, string htmlBody)
+    private string GetFromEmail()
     {
-        var (smtpHost, smtpPort, smtpUser, smtpPass, fromEmail, fromName) = GetSmtpConfig();
+        return Environment.GetEnvironmentVariable("RESEND_FROM") 
+            ?? Environment.GetEnvironmentVariable("SMTP_FROM")
+            ?? _config["Resend:From"] 
+            ?? "onboarding@resend.dev";
+    }
 
-        if (string.IsNullOrEmpty(smtpUser) || string.IsNullOrEmpty(smtpPass))
+    private async Task SendViaResend(string toEmail, string subject, string htmlBody)
+    {
+        var apiKey = GetResendApiKey();
+        var fromEmail = GetFromEmail();
+
+        if (string.IsNullOrEmpty(apiKey))
         {
-            _logger.LogWarning("SMTP not configured — Email not sent to {Email}", toEmail);
+            _logger.LogWarning("RESEND_API_KEY not configured — Email not sent to {Email}", toEmail);
             return;
         }
 
-        var message = new MimeMessage();
-        message.From.Add(new MailboxAddress(fromName, fromEmail));
-        message.To.Add(new MailboxAddress("", toEmail));
-        message.Subject = subject;
-        message.Body = new TextPart("html") { Text = htmlBody };
+        var payload = new
+        {
+            from = $"StockIQ <{fromEmail}>",
+            to = new[] { toEmail },
+            subject = subject,
+            html = htmlBody
+        };
 
-        using var client = new SmtpClient();
-        
+        var json = JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        _http.DefaultRequestHeaders.Clear();
+        _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
         try
         {
-            _logger.LogInformation("Connecting to SMTP {Host}:{Port}...", smtpHost, smtpPort);
-            
-            // Use STARTTLS for port 587, SSL for port 465
-            var secureOption = smtpPort == 465 
-                ? SecureSocketOptions.SslOnConnect 
-                : SecureSocketOptions.StartTls;
-            
-            await client.ConnectAsync(smtpHost, smtpPort, secureOption);
-            await client.AuthenticateAsync(smtpUser, smtpPass);
-            await client.SendAsync(message);
-            await client.DisconnectAsync(true);
-            
-            _logger.LogInformation("Email sent successfully to {Email}", toEmail);
+            _logger.LogInformation("Sending email via Resend to {Email}...", toEmail);
+            var response = await _http.PostAsync("https://api.resend.com/emails", content);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("Email sent successfully to {Email}. Response: {Response}", toEmail, responseBody);
+            }
+            else
+            {
+                _logger.LogError("Resend API error ({Status}): {Response}", response.StatusCode, responseBody);
+                throw new Exception($"Resend API error: {response.StatusCode} - {responseBody}");
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "SMTP error sending to {Email}: {Message}", toEmail, ex.Message);
+            _logger.LogError(ex, "Failed to send email to {Email}", toEmail);
             throw;
         }
     }
@@ -105,12 +115,12 @@ public class EmailService : IEmailService
 </body>
 </html>";
 
-        await SendWithMailKit(toEmail, $"StockIQ — Your Verification Code: {otp}", body);
+        await SendViaResend(toEmail, $"StockIQ — Your Verification Code: {otp}", body);
     }
 
     public async Task SendEmailAsync(string toEmail, string subject, string body)
     {
-        await SendWithMailKit(toEmail, subject, body);
+        await SendViaResend(toEmail, subject, body);
     }
 
     public async Task SendAlertNotificationAsync(string toEmail, string userName, string symbol, string name, decimal targetPrice, decimal currentPrice, string type)
@@ -148,7 +158,7 @@ public class EmailService : IEmailService
 </body>
 </html>";
 
-        await SendWithMailKit(toEmail, subject, body);
+        await SendViaResend(toEmail, subject, body);
     }
 
     public async Task SendPasswordResetAsync(string toEmail, string resetToken)
@@ -185,6 +195,6 @@ public class EmailService : IEmailService
 </body>
 </html>";
 
-        await SendWithMailKit(toEmail, "StockIQ — Password Reset Request", body);
+        await SendViaResend(toEmail, "StockIQ — Password Reset Request", body);
     }
 }
