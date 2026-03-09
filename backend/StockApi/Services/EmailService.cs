@@ -24,22 +24,10 @@ public class EmailService : IEmailService
         _http = new HttpClient();
     }
 
-    private string GetResendApiKey()
-    {
-        return Environment.GetEnvironmentVariable("RESEND_API_KEY") ?? _config["Resend:ApiKey"] ?? "";
-    }
-
-    private string GetFromEmail()
-    {
-        return Environment.GetEnvironmentVariable("RESEND_FROM") 
-            ?? _config["Resend:From"] 
-            ?? "onboarding@resend.dev";
-    }
-
     private async Task SendViaResend(string toEmail, string subject, string htmlBody)
     {
-        var apiKey = GetResendApiKey();
-        var fromEmail = GetFromEmail();
+        var apiKey = Environment.GetEnvironmentVariable("RESEND_API_KEY") ?? "";
+        var fromEmail = Environment.GetEnvironmentVariable("RESEND_FROM") ?? "onboarding@resend.dev";
 
         if (string.IsNullOrEmpty(apiKey))
         {
@@ -58,13 +46,14 @@ public class EmailService : IEmailService
         var json = JsonSerializer.Serialize(payload);
         var content = new StringContent(json, Encoding.UTF8, "application/json");
 
-        _http.DefaultRequestHeaders.Clear();
-        _http.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.resend.com/emails");
+        request.Headers.Add("Authorization", $"Bearer {apiKey}");
+        request.Content = content;
 
         try
         {
-            _logger.LogInformation("Sending email via Resend to {Email}...", toEmail);
-            var response = await _http.PostAsync("https://api.resend.com/emails", content);
+            _logger.LogInformation("Sending email via Resend to {Email} from {From}...", toEmail, fromEmail);
+            var response = await _http.SendAsync(request);
             var responseBody = await response.Content.ReadAsStringAsync();
 
             if (response.IsSuccessStatusCode)
@@ -81,6 +70,76 @@ public class EmailService : IEmailService
         {
             _logger.LogError(ex, "Failed to send email to {Email}", toEmail);
             throw;
+        }
+    }
+
+    private async Task SendViaBrevo(string toEmail, string subject, string htmlBody)
+    {
+        var apiKey = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
+        var senderEmail = Environment.GetEnvironmentVariable("BREVO_SENDER_EMAIL") ?? "stockiq@brevosend.com";
+        var senderName = Environment.GetEnvironmentVariable("BREVO_SENDER_NAME") ?? "StockIQ";
+
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            _logger.LogWarning("BREVO_API_KEY not configured — Email not sent to {Email}", toEmail);
+            return;
+        }
+
+        var payload = new
+        {
+            sender = new { name = senderName, email = senderEmail },
+            to = new[] { new { email = toEmail } },
+            subject = subject,
+            htmlContent = htmlBody
+        };
+
+        var json = JsonSerializer.Serialize(payload);
+        var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+        request.Headers.Add("api-key", apiKey);
+        request.Content = content;
+
+        try
+        {
+            _logger.LogInformation("Sending email via Brevo to {Email}...", toEmail);
+            var response = await _http.SendAsync(request);
+            var responseBody = await response.Content.ReadAsStringAsync();
+
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("Email sent via Brevo to {Email}. Response: {Response}", toEmail, responseBody);
+            }
+            else
+            {
+                _logger.LogError("Brevo API error ({Status}): {Response}", response.StatusCode, responseBody);
+                throw new Exception($"Brevo API error: {response.StatusCode} - {responseBody}");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send email via Brevo to {Email}", toEmail);
+            throw;
+        }
+    }
+
+    private async Task SendEmail(string toEmail, string subject, string htmlBody)
+    {
+        // Try Brevo first (no recipient restrictions), then Resend as fallback
+        var brevoKey = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
+        var resendKey = Environment.GetEnvironmentVariable("RESEND_API_KEY") ?? "";
+
+        if (!string.IsNullOrEmpty(brevoKey))
+        {
+            await SendViaBrevo(toEmail, subject, htmlBody);
+        }
+        else if (!string.IsNullOrEmpty(resendKey))
+        {
+            await SendViaResend(toEmail, subject, htmlBody);
+        }
+        else
+        {
+            _logger.LogWarning("No email provider configured (BREVO_API_KEY or RESEND_API_KEY). Email not sent to {Email}", toEmail);
         }
     }
 
@@ -114,12 +173,12 @@ public class EmailService : IEmailService
 </body>
 </html>";
 
-        await SendViaResend(toEmail, $"StockIQ — Your Verification Code: {otp}", body);
+        await SendEmail(toEmail, $"StockIQ — Your Verification Code: {otp}", body);
     }
 
     public async Task SendEmailAsync(string toEmail, string subject, string body)
     {
-        await SendViaResend(toEmail, subject, body);
+        await SendEmail(toEmail, subject, body);
     }
 
     public async Task SendAlertNotificationAsync(string toEmail, string userName, string symbol, string name, decimal targetPrice, decimal currentPrice, string type)
@@ -157,7 +216,7 @@ public class EmailService : IEmailService
 </body>
 </html>";
 
-        await SendViaResend(toEmail, subject, body);
+        await SendEmail(toEmail, subject, body);
     }
 
     public async Task SendPasswordResetAsync(string toEmail, string resetToken)
@@ -194,6 +253,6 @@ public class EmailService : IEmailService
 </body>
 </html>";
 
-        await SendViaResend(toEmail, "StockIQ — Password Reset Request", body);
+        await SendEmail(toEmail, "StockIQ — Password Reset Request", body);
     }
 }
