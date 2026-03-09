@@ -88,18 +88,35 @@ builder.Services.AddControllers();
 builder.Services.AddSignalR();
 
 // ── CORS ──
-var corsOrigins = Environment.GetEnvironmentVariable("CORS_ORIGINS")?.Split(',')
-    ?? builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-    ?? new[] { "http://localhost:5173", "http://localhost:3000", "http://localhost:4173" };
+var corsOriginsRaw = Environment.GetEnvironmentVariable("CORS_ORIGINS")
+    ?? builder.Configuration["Cors:AllowedOrigins"]
+    ?? "http://localhost:5173,http://localhost:3000,http://localhost:4173";
 
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins(corsOrigins)
-            .AllowAnyHeader()
-            .AllowAnyMethod()
-            .AllowCredentials();
+        if (corsOriginsRaw.Trim() == "*")
+        {
+            policy.AllowAnyOrigin()
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+        else
+        {
+            var origins = corsOriginsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(o => o.Trim())
+                .Where(o => !string.IsNullOrEmpty(o))
+                .ToArray();
+            
+            // Ensure origins have https:// prefix
+            origins = origins.Select(o => o.StartsWith("http") ? o : $"https://{o}").ToArray();
+            
+            policy.WithOrigins(origins)
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        }
     });
 });
 
