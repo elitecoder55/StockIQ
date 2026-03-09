@@ -183,4 +183,15 @@ app.MapGet("/health", () => Results.Ok(new
     uptime = Environment.TickCount64 / 1000
 }));
 
+app.MapGet("/debug-smtp", () => Results.Ok(new
+{
+    smtp_host = Environment.GetEnvironmentVariable("SMTP_HOST") ?? "NOT SET",
+    smtp_port = Environment.GetEnvironmentVariable("SMTP_PORT") ?? "NOT SET",
+    smtp_user = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SMTP_USER")) ? "NOT SET" : "SET ✅",
+    smtp_password = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SMTP_PASSWORD")) ? "NOT SET" : "SET ✅",
+    smtp_from = Environment.GetEnvironmentVariable("SMTP_FROM") ?? "NOT SET",
+    database_url = string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DATABASE_URL")) ? "NOT SET" : "SET ✅",
+    cors_origins = Environment.GetEnvironmentVariable("CORS_ORIGINS") ?? "NOT SET",
+}));
+
 app.Run();
