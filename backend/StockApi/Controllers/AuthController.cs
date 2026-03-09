@@ -88,7 +88,7 @@ public class AuthController : ControllerBase
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to send OTP to {Email}", email);
-            return StatusCode(500, new { ok = false, msg = "Failed to send email. Please try again." });
+            return StatusCode(500, new { ok = false, msg = "Failed to send email. Please try again.", details = ex.Message });
         }
 
         return Ok(new { ok = true, msg = "Verification code sent to your email.", expiresIn = 60 });
