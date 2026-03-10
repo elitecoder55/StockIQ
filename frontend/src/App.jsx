@@ -531,10 +531,11 @@ Stock Data for ${stock.symbol}:
 - Best Sell Zone: ${stock.currency}${prediction?.bestSellZone}
 
 Rules: Respond in English only. Use specific numbers. Always add "DYOR — this is not financial advice" for investment questions. Be helpful but honest about uncertainty.`;
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
+      const API = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const res = await fetch(`${API}/api/ai/ask`, {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 1000, system: sys,
+          max_tokens: 1000, system: sys,
           messages: [...messages.filter((_, i) => i > 0).map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.text })), { role: "user", content: q }]
         }),
       });
