@@ -132,7 +132,7 @@ namespace StockApi.Controllers
 
             var groqRequest = new
             {
-                model = "llama3-8b-8192", // Fast model on Groq
+                model = "llama-3.3-70b-versatile", // Fast model on Groq
                 messages = messages,
                 max_tokens = request.max_tokens ?? 1000
             };
